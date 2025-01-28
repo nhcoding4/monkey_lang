@@ -22,6 +22,7 @@ const (
 	MINUS   = "-"
 	ASTERIX = "*"
 	SLASH   = "/"
+	MODULO  = "%"
 
 	BANG  = "!"
 	EQ    = "=="
@@ -33,6 +34,7 @@ const (
 
 	COMMA     = ","
 	SEMICOLON = ";"
+	COLON     = ":"
 
 	LPAREN   = "("
 	RPAREN   = ")"

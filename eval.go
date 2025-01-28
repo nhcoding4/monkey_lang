@@ -58,6 +58,8 @@ func eval(node Node, env *Environment) Object {
 		params := node.parameters
 		body := node.body
 		return &Function{parameters: params, env: env, body: body}
+	case *HashLiteral:
+		return evalHashLiteral(node.token, node, env)
 	case *Identifier:
 		return evalIdentifier(node.token, node, env)
 	case *IfExpression:
@@ -137,8 +139,6 @@ func evalBlockStatement(block *BlockStatement, env *Environment) Object {
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// Call expressions
-// --------------------------------------------------------------------------------------------------------------------
 
 func evalExpressions(exprs []Expression, env *Environment) []Object {
 	var result []Object
@@ -155,7 +155,33 @@ func evalExpressions(exprs []Expression, env *Environment) []Object {
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// If exprs
+
+func evalHashLiteral(token Token, node *HashLiteral, env *Environment) Object {
+	pairs := make(map[HashKey]HashPair)
+
+	for keyNode, valueNode := range node.pairs {
+		key := eval(keyNode, env)
+		if isError(key) {
+			return key
+		}
+
+		hashKey, ok := key.(Hashable)
+		if !ok {
+			return newError("unusable as hash key: %v. On line: %v, column: %v.", key.Type(), token.line, token.column)
+		}
+
+		value := eval(valueNode, env)
+		if isError(value) {
+			return value
+		}
+
+		hashed := hashKey.HashKey()
+		pairs[hashed] = HashPair{key: key, value: value}
+	}
+
+	return &Hash{pairs: pairs}
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 func evalArrayIndexExpression(array, index Object) Object {
@@ -168,6 +194,23 @@ func evalArrayIndexExpression(array, index Object) Object {
 	}
 
 	return arrayObject.elements[idx]
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+func evalHashIndexExpression(token Token, hash, index Object) Object {
+	hashObject := hash.(*Hash)
+	key, ok := index.(Hashable)
+	if !ok {
+		return newError("unusable as a hash key: %v. On line: %v, column: %v.", index.Type(), token.line, token.column)
+	}
+
+	pair, ok := hashObject.pairs[key.HashKey()]
+	if !ok {
+		return &NullObject
+	}
+
+	return pair.value
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -195,6 +238,8 @@ func evalIndexExpression(token Token, left, index Object) Object {
 	switch {
 	case left.Type() == ARRAY_OBJ && index.Type() == INTEGER_OBJ:
 		return evalArrayIndexExpression(left, index)
+	case left.Type() == HASH_OBJ:
+		return evalHashIndexExpression(token, left, index)
 	default:
 		return newError(
 			"index operator not supported: %v. On line %v, column: %v.",
@@ -237,8 +282,6 @@ func isTruthy(object Object) bool {
 	}
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-// Infix exprs
 // --------------------------------------------------------------------------------------------------------------------
 
 func evalInfixExpr(token Token, left, right Object, operator string) Object {
@@ -308,6 +351,8 @@ func evalIntegerInfixExpr(token Token, left, right Object, operator string) Obje
 		return &Integer{value: leftVal / rightVal}
 	case "*":
 		return &Integer{value: leftVal * rightVal}
+	case "%":
+		return &Integer{value: leftVal % rightVal}
 	default:
 		return evalOtherInfixOperators(token, leftVal, rightVal, operator)
 	}
@@ -361,8 +406,6 @@ func evalStringInfixExpression(token Token, operator string, left, right Object)
 	return &StringValue{value: leftVal + rightVal}
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-// Prefix exprs
 // --------------------------------------------------------------------------------------------------------------------
 
 func evalPrefixExpression(token Token, operator string, right Object) Object {

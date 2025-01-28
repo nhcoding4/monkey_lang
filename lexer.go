@@ -48,12 +48,16 @@ func (l *Lexer) nextToken() Token {
 		return l.makeToken(MINUS)
 	case '*':
 		return l.makeToken(ASTERIX)
+	case '%':
+		return l.makeToken(MODULO)
 	case '/':
 		return l.makeToken(SLASH)
 	case ';':
 		return l.makeToken(SEMICOLON)
 	case ',':
 		return l.makeToken(COMMA)
+	case ':':
+		return l.makeToken(COLON)
 	case '(':
 		return l.makeToken(LPAREN)
 	case ')':

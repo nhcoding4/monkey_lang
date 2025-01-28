@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"hash/fnv"
 	"strings"
 )
 
@@ -11,6 +12,10 @@ import (
 // --------------------------------------------------------------------------------------------------------------------
 
 type ObjectType string
+
+type Hashable interface {
+	HashKey() HashKey
+}
 
 type BuiltinFunc func(args ...Object) Object
 
@@ -21,6 +26,7 @@ const (
 	ERR_OBJ      = "ERROR_OBJ"
 	FLOAT_OBJ    = "FLOAT"
 	FUNCTION_OBJ = "FUNCTION"
+	HASH_OBJ     = "HASH_OBJ"
 	INTEGER_OBJ  = "INTEGER"
 	NULL_OBJ     = "NULL"
 	RETURN_OBJ   = "RETURN_VALUE"
@@ -50,8 +56,16 @@ func (a *Array) inspect() string {
 	var buffer bytes.Buffer
 	elements := make([]string, 0)
 
-	for _, elem := range a.elements {
+	for idx, elem := range a.elements {
 		elements = append(elements, elem.inspect())
+		if idx == 5 {
+			buffer.WriteString("[")
+			buffer.WriteString(strings.Join(elements, ", "))
+			buffer.WriteString(", ...")
+			buffer.WriteString("]")
+
+			return buffer.String()
+		}
 	}
 
 	buffer.WriteString("[")
@@ -70,6 +84,17 @@ type Boolean struct {
 func (b *Boolean) Type() ObjectType { return BOOL_OBJ }
 
 func (b *Boolean) inspect() string { return fmt.Sprintf("%v", b.value) }
+
+func (b *Boolean) HashKey() HashKey {
+	var value uint64
+	if b.value {
+		value = 1
+	} else {
+		value = 0
+	}
+
+	return HashKey{keyType: b.Type(), value: value}
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -112,20 +137,50 @@ type Function struct {
 func (f *Function) Type() ObjectType { return FLOAT_OBJ }
 
 func (f *Function) inspect() string {
-	var buffer bytes.Buffer
 	params := make([]string, 0)
 
 	for _, param := range f.parameters {
 		params = append(params, param.toString())
 	}
 
-	buffer.WriteString("fn(")
-	buffer.WriteString(strings.Join(params, ", "))
-	buffer.WriteString("){\n")
-	buffer.WriteString("  " + f.body.toString())
-	buffer.WriteString("\n}")
+	return fmt.Sprintf("fn(%v)", strings.Join(params, ", "))
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+type Hash struct {
+	pairs map[HashKey]HashPair
+}
+
+func (h *Hash) Type() ObjectType { return HASH_OBJ }
+
+func (h *Hash) inspect() string {
+	var buffer bytes.Buffer
+	pairs := make([]string, 0)
+
+	for _, pair := range h.pairs {
+		pairs = append(pairs, fmt.Sprintf("%v: %v", pair.key.inspect(), pair.value.inspect()))
+	}
+
+	buffer.WriteString("{")
+	buffer.WriteString(strings.Join(pairs, ", "))
+	buffer.WriteString("}")
 
 	return buffer.String()
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+type HashKey struct {
+	keyType ObjectType
+	value   uint64
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+type HashPair struct {
+	key   Object
+	value Object
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -137,6 +192,10 @@ type Integer struct {
 func (i *Integer) Type() ObjectType { return INTEGER_OBJ }
 
 func (i *Integer) inspect() string { return fmt.Sprintf("%v", i.value) }
+
+func (i *Integer) HashKey() HashKey {
+	return HashKey{keyType: i.Type(), value: uint64(i.value)}
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -165,6 +224,13 @@ type StringValue struct {
 func (s *StringValue) Type() ObjectType { return STRING_OBJ }
 
 func (s *StringValue) inspect() string { return s.value }
+
+func (s *StringValue) HashKey() HashKey {
+	hash := fnv.New64a()
+	hash.Write([]byte(s.value))
+
+	return HashKey{keyType: s.Type(), value: hash.Sum64()}
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 // Environment
@@ -208,96 +274,6 @@ func (e *Environment) set(name string, val Object) Object {
 	e.store[name] = val
 
 	return val
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-// Language builtins
-// --------------------------------------------------------------------------------------------------------------------
-
-var builtins = map[string]*Builtin{
-	"len": {fn: func(args ...Object) Object {
-		if len(args) != 1 {
-			return newError("wrong number of args passed to len(). Got %v, want 1", len(args))
-		}
-		switch arg := args[0].(type) {
-		case *Array:
-			return &Integer{value: int64(len(arg.elements))}
-		case *StringValue:
-			return &Integer{value: int64(len(arg.value))}
-		default:
-			return newError("argument to 'len()' not supported, got %v", args[0].Type())
-		}
-	},
-	},
-	"first": {fn: func(args ...Object) Object {
-		if len(args) != 1 {
-			return newError("first: wrong number of arguments. Got %v, want 1", len(args))
-		}
-		if args[0].Type() != ARRAY_OBJ {
-			return newError("first: arguments to first must be an Array, got %v.", args[0].Type())
-		}
-		arr := args[0].(*Array)
-		if len(arr.elements) > 0 {
-			return arr.elements[0]
-		}
-
-		return &NullObject
-	},
-	},
-	"last": {fn: func(args ...Object) Object {
-		if len(args) != 1 {
-			return newError("last: wrong number of arguments. Got %v, want 1", len(args))
-		}
-		if args[0].Type() != ARRAY_OBJ {
-			return newError("last: arguments to last must be an Array, got %v.", args[0].Type())
-		}
-
-		arr := args[0].(*Array)
-		length := len(arr.elements)
-		if length > 0 {
-			return arr.elements[length-1]
-		}
-
-		return &NullObject
-	},
-	},
-	"rest": {fn: func(args ...Object) Object {
-		if len(args) != 1 {
-			return newError("rest: wrong number of arguments. Got %v, want 1", len(args))
-		}
-		if args[0].Type() != ARRAY_OBJ {
-			return newError("rest: arguments to rest must be an Array, got %v.", args[0].Type())
-		}
-
-		arr := args[0].(*Array)
-		length := len(arr.elements)
-		if length > 0 {
-			newElements := make([]Object, length-1, length-1)
-			copy(newElements, arr.elements[1:length])
-			return &Array{elements: newElements}
-		}
-
-		return &NullObject
-	},
-	},
-	"push": {fn: func(args ...Object) Object {
-		if len(args) != 2 {
-			return newError("push: wrong number of arguments. Got %v, want %v", len(args), 2)
-		}
-		if args[0].Type() != ARRAY_OBJ {
-			return newError("push: first argument to push must be an Array, got %v.", args[0].Type())
-		}
-
-		arr := args[0].(*Array)
-		length := len(arr.elements)
-
-		newElements := make([]Object, length+1, length+1)
-		copy(newElements, arr.elements)
-		newElements[length] = args[1]
-
-		return &Array{elements: newElements}
-	},
-	},
 }
 
 // --------------------------------------------------------------------------------------------------------------------

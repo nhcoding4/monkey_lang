@@ -253,6 +253,32 @@ func (f *FunctionLiteral) toString() string {
 
 // --------------------------------------------------------------------------------------------------------------------
 
+type HashLiteral struct {
+	token Token
+	pairs map[Expression]Expression
+}
+
+func (h *HashLiteral) expressionNode() {}
+
+func (h *HashLiteral) tokenLiteral() string { return h.token.literal }
+
+func (h *HashLiteral) toString() string {
+	var buffer bytes.Buffer
+	args := make([]string, 0)
+
+	for key, value := range h.pairs {
+		args = append(args, key.toString()+":"+value.toString())
+	}
+
+	buffer.WriteString("{")
+	buffer.WriteString(strings.Join(args, ", "))
+	buffer.WriteString("}")
+
+	return buffer.String()
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 type Identifier struct {
 	token Token
 	value string

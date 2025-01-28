@@ -10,8 +10,7 @@ import (
 
 func main() {
 	env := newEnvironment()
-	loadMap(env)
-	loadRecude(env)
+	loadNativeBuiltins(env)
 
 	for {
 		input := takeInput()
@@ -33,6 +32,7 @@ func main() {
 				fmt.Println(evaluated.inspect())
 			}
 		}
+		fmt.Println("")
 	}
 }
 

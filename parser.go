@@ -321,6 +321,36 @@ func (p *Parser) parseGroupedExpr() Expression {
 
 // --------------------------------------------------------------------------------------------------------------------
 
+func (p *Parser) parseHashLiteral() Expression {
+	hash := &HashLiteral{token: p.cur}
+	hash.pairs = make(map[Expression]Expression)
+
+	for p.peek.tokenType != RBRACE {
+		p.nextToken()
+		key := p.parseExpression(LOWEST)
+
+		if !p.expectPeek(COLON) {
+			return nil
+		}
+
+		p.nextToken()
+		value := p.parseExpression(LOWEST)
+		hash.pairs[key] = value
+
+		if p.peek.tokenType != RBRACE && !p.expectPeek(COMMA) {
+			return nil
+		}
+	}
+
+	if !p.expectPeek(RBRACE) {
+		return nil
+	}
+
+	return hash
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 func (p *Parser) parseIdentifier() Expression {
 	return &Identifier{token: p.cur, value: p.cur.literal}
 }
@@ -420,7 +450,7 @@ func (p *Parser) getPrec(tokenType TokenType) int {
 		return LESSGREATER
 	case PLUS, MINUS:
 		return SUM
-	case SLASH, ASTERIX:
+	case SLASH, ASTERIX, MODULO:
 		return PRODUCT
 	case LPAREN:
 		return CALL
@@ -435,7 +465,7 @@ func (p *Parser) getPrec(tokenType TokenType) int {
 
 func (p *Parser) getInfixFn(tokenType TokenType) infixParsingFn {
 	switch tokenType {
-	case PLUS, MINUS, SLASH, ASTERIX, EQ, NOTEQ, LT, LTEQ, GT, GTEQ:
+	case PLUS, MINUS, SLASH, ASTERIX, MODULO, EQ, NOTEQ, LT, LTEQ, GT, GTEQ:
 		return p.parseInfixExpression
 	case LPAREN:
 		return p.parseCallExpression
@@ -464,6 +494,8 @@ func (p *Parser) getPrefixFn(tokenType TokenType) prefixParsingFn {
 		return p.parseIfExpression
 	case INT:
 		return p.parseIntegerLiteral
+	case LBRACE:
+		return p.parseHashLiteral
 	case LBRACKET:
 		return p.parseArrayLiteral
 	case LPAREN:
