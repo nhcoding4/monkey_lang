@@ -134,7 +134,7 @@ type Function struct {
 	env        *Environment
 }
 
-func (f *Function) Type() ObjectType { return FLOAT_OBJ }
+func (f *Function) Type() ObjectType { return FUNCTION_OBJ }
 
 func (f *Function) inspect() string {
 	params := make([]string, 0)
